@@ -553,6 +553,14 @@ function migrate(data){
       p.end = ds[ds.length-1] || p.start;
     }
 
+    // 確保 cells 涵蓋 start~end 的每一天（補齊缺漏，保留既有 cell 的 id 與 gapAfter）
+    if(daysBetween(p.start, p.end) >= 0 && daysBetween(p.start, p.end) <= MAX_REASONABLE_DAYS){
+      const existingByDate = {};
+      p.cells.forEach(c => { if(c && c.date) existingByDate[c.date] = c; });
+      const fullRange = buildDateRange(p.start, p.end);
+      p.cells = fullRange.map(dt => existingByDate[dt] || { id: uid(), date: dt, gapAfter: 0 });
+    }
+
     // cell 補 gapAfter 預設
     p.cells.forEach(c => { if(c.gapAfter === undefined) c.gapAfter = 0; });
 
