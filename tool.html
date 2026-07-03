@@ -1,0 +1,1405 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DevTimeline — 專案時間軸</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f5f5f3; --surface: #fff; --border: #e0e0e0;
+    --text: #1a1a1a; --text2: #666; --text3: #999;
+    --gold: #b8860b; --gold-soft: rgba(184,134,11,0.1);
+    --danger: #c0392b; --danger-soft: rgba(192,57,43,0.1);
+    --grid-line: #e8e8e4;
+    --axis: #1a1a1a;
+    --lead: #333;
+    --idea: #b8860b; --progress: #4a7dbf; --feature: #4a9d7f;
+    --post: #a56bc2; --done: #999;
+  }
+  body.dark {
+    --bg: #111110; --surface: #1c1c1a; --border: #2e2e2b;
+    --text: #f0ede8; --text2: #a8a69e; --text3: #777;
+    --gold: #d4a94e; --gold-soft: rgba(212,169,78,0.12);
+    --danger: #e05c4a; --danger-soft: rgba(224,92,74,0.14);
+    --grid-line: #242422;
+    --axis: #f0ede8;
+    --lead: #b8b5ae;
+    --idea: #d4a94e; --progress: #6a9bdb; --feature: #6dbb9e;
+    --post: #c08de0; --done: #6f6d68;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans TC', sans-serif;
+    background: var(--bg); color: var(--text);
+    min-height: 100vh; transition: background .2s, color .2s;
+  }
+
+  /* ---------- Header (grid view) ---------- */
+  .top-container { max-width: 1120px; margin: 0 auto; padding: 24px 20px 60px; }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 30px; gap: 12px; flex-wrap: wrap;
+  }
+  .brand { display: flex; flex-direction: column; gap: 2px; cursor: pointer; }
+  .brand h1 { font-weight: 700; font-size: 20px; letter-spacing: 0.02em; }
+  .brand p { color: var(--text3); font-size: 11px; }
+  .header-right { display: flex; align-items: center; gap: 12px; }
+  .sync-status { font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 6px; }
+  .sync-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); transition: background .2s; }
+  .sync-dot.syncing { background: var(--gold); animation: pulse 1s infinite; }
+  .sync-dot.synced { background: var(--feature); }
+  .sync-dot.error { background: var(--danger); }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+  .toolbar { display: flex; gap: 8px; align-items: center; }
+  .tool-btn {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 1px solid var(--border); background: var(--surface);
+    color: var(--text2); cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color .15s, color .15s;
+  }
+  .tool-btn:hover { border-color: var(--gold); color: var(--text); }
+  .tool-btn svg { display: block; }
+
+  /* ---------- Grid ---------- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
+  .proj-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 20px; cursor: pointer;
+    transition: transform .15s, border-color .15s;
+    display: flex; flex-direction: column; gap: 10px; min-height: 120px;
+    position: relative;
+  }
+  .proj-card:hover { transform: translateY(-2px); border-color: var(--gold); }
+  .proj-card .pc-top { display: flex; align-items: center; gap: 8px; }
+  .proj-card .pc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); flex-shrink: 0; }
+  .proj-card .pc-title { font-size: 16px; font-weight: 600; line-height: 1.35; }
+  .proj-card .pc-meta { font-size: 12px; color: var(--text3); margin-top: auto; }
+  .proj-card .pc-range { font-size: 11px; color: var(--text3); }
+  .proj-card .pc-bars { display: flex; gap: 3px; margin-top: 4px; }
+  .proj-card .pc-bar { height: 4px; border-radius: 2px; flex: 1; background: var(--border); }
+  .proj-card .pc-bar.on { background: var(--gold); }
+
+  /* 完成標記（右上角紅色小標籤） */
+  .proj-card .pc-done-badge {
+    position: absolute; top: 12px; right: 12px;
+    display: none; align-items: center; gap: 4px;
+    background: var(--danger); color: #fff;
+    font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px;
+  }
+  .proj-card.done .pc-done-badge { display: flex; }
+  .proj-card.done { opacity: 0.72; }
+  .proj-card.done .pc-title { text-decoration: line-through; text-decoration-color: var(--text3); }
+
+  /* 編輯模式：卡片內的操作列 */
+  .proj-card .pc-edit-row {
+    display: none; gap: 8px; margin-top: 8px;
+    padding-top: 10px; border-top: 1px solid var(--border);
+  }
+  .grid.editing .proj-card .pc-edit-row { display: flex; }
+  .grid.editing .proj-card { cursor: default; }
+  .grid.editing .proj-card:hover { transform: none; }
+  .pc-btn {
+    flex: 1; font-family: 'Noto Sans TC', sans-serif; font-size: 12.5px; font-weight: 600;
+    padding: 8px; border-radius: 9px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text2); cursor: pointer; transition: all .12s;
+    display: flex; align-items: center; justify-content: center; gap: 5px;
+  }
+  .pc-btn.complete:hover { border-color: var(--gold); color: var(--gold); }
+  .pc-btn.complete.on { background: var(--gold); color: #fff; border-color: var(--gold); }
+  .pc-btn.remove:hover { border-color: var(--danger); color: var(--danger); }
+
+  .add-card {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    border: 2px dashed var(--border); border-radius: 16px;
+    color: var(--text3); font-size: 14px; font-weight: 600;
+    background: transparent; cursor: pointer; min-height: 120px;
+    font-family: 'Noto Sans TC', sans-serif; transition: all .15s;
+  }
+  .add-card:hover { border-color: var(--gold); color: var(--gold); }
+  .grid.editing .add-card { display: none; }
+
+  /* ================= 全螢幕流程圖 ================= */
+  .detail { display: none; position: fixed; inset: 0; z-index: 50; background: var(--bg); flex-direction: column; }
+  .detail.active { display: flex; }
+
+  /* 方格紙背景 */
+  .canvas {
+    flex: 1; position: relative; overflow: auto;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: var(--grid, 24px) var(--grid, 24px);
+  }
+  .canvas-inner { position: relative; min-width: 100%; min-height: 100%; }
+  .zoom-layer { position: relative; transform-origin: 0 0; will-change: transform; }
+
+  /* 右下角縮放控制 */
+  .zoom-ctrl {
+    position: fixed; right: 20px; bottom: 24px; z-index: 60;
+    display: none; flex-direction: column; gap: 1px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden; box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  }
+  .detail.active .zoom-ctrl { display: flex; }
+  .zoom-ctrl button {
+    width: 44px; height: 44px; border: none; background: var(--surface);
+    color: var(--text); font-size: 20px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .12s;
+  }
+  .zoom-ctrl button:hover { background: var(--gold-soft); }
+  .zoom-ctrl button:active { background: var(--gold-soft); }
+  .zoom-ctrl .zoom-div { height: 1px; background: var(--border); }
+  .zoom-ctrl .zoom-level { font-size: 11px; height: 26px; color: var(--text3); cursor: default; }
+  .zoom-ctrl .zoom-level:hover { background: var(--surface); }
+
+  /* 浮動工具列（右上角） */
+  .float-tools {
+    position: fixed; top: 16px; right: 20px; z-index: 60;
+    display: flex; gap: 10px; align-items: center;
+  }
+  .ft-btn {
+    width: 46px; height: 46px; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--surface);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08); transition: all .15s;
+  }
+  .ft-btn.add { color: var(--text); }
+  .ft-btn.add:hover { border-color: var(--gold); color: var(--gold); }
+  .ft-btn.trash { color: var(--text2); }
+  .ft-btn.trash:hover { background: var(--gold-soft); border-color: var(--gold); color: var(--text); }
+  .ft-btn.trash.active { background: var(--gold); color: #fff; border-color: var(--gold); }
+
+  /* 左上角：返回 + 標題 + 主題 */
+  .float-head {
+    position: fixed; top: 16px; left: 20px; z-index: 60;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 6px 10px 6px 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    max-width: calc(100vw - 180px);
+  }
+  .fh-btn {
+    width: 34px; height: 34px; border-radius: 9px; flex-shrink: 0;
+    border: none; background: transparent; color: var(--text2);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background .15s, color .15s;
+  }
+  .fh-btn:hover { background: var(--gold-soft); color: var(--text); }
+  .detail-title {
+    font-family: 'Noto Sans TC', sans-serif; font-weight: 700; font-size: 17px;
+    color: var(--text); background: transparent; border: none; outline: none;
+    padding: 4px 6px; border-radius: 7px; min-width: 60px; max-width: 340px;
+  }
+  .detail-title:focus { background: var(--gold-soft); }
+
+  .edit-banner {
+    position: fixed; top: 74px; left: 50%; transform: translateX(-50%); z-index: 60;
+    display: none; font-size: 12px; color: #fff; font-weight: 600;
+    background: var(--danger); padding: 8px 16px; border-radius: 20px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+  }
+  .detail.editing .edit-banner { display: block; }
+
+  /* 未排入標籤區（右側浮動） */
+  .pool-panel {
+    position: fixed; top: 74px; right: 20px; z-index: 55; width: 190px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+    max-height: 60vh; overflow-y: auto; display: none;
+  }
+  .pool-panel.show { display: block; }
+  .pool-panel .pp-title { font-size: 11px; color: var(--text3); font-weight: 600; margin-bottom: 10px; }
+  .pool-panel .pp-empty { font-size: 11px; color: var(--text3); line-height: 1.5; }
+  .pool-panel .tag { margin-bottom: 8px; width: 100%; }
+
+  /* SVG 連線層 */
+  .lead-svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 1; }
+  .lead-line { stroke: var(--lead); stroke-width: 2; }
+  .lead-line.dragging { stroke-dasharray: 5 4; stroke: var(--gold); }
+  .axis-line { stroke: var(--axis); stroke-width: 4; }
+  .axis-tick { stroke: var(--axis); stroke-width: 2; }
+
+  /* 時間軸節點與日期 */
+  .axis-node {
+    position: absolute; z-index: 2; transform: translate(-50%, -50%);
+    display: flex; flex-direction: column; align-items: center;
+  }
+  .axis-node.draggable { cursor: ew-resize; }
+  .axis-node.draggable::before {
+    content: ""; position: absolute; left: -12px; top: -12px;
+    width: 24px; height: 24px; border-radius: 50%;
+  }
+  .axis-node.draggable .axis-dot { width: 12px; height: 12px; box-shadow: 0 0 0 4px var(--gold-soft); }
+  .axis-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--axis); }
+  .axis-date {
+    position: absolute; top: 14px; font-size: 11px; color: var(--text2);
+    white-space: nowrap; font-weight: 500;
+  }
+
+  .axis-arrow { position: absolute; z-index: 3; cursor: pointer; }
+  .axis-arrow svg { display: block; }
+  .axis-arrow:hover { opacity: 0.7; }
+
+  /* 標籤方框（畫布上） */
+  .node-tag {
+    position: absolute; z-index: 4;
+    background: var(--surface); border: 2px solid var(--border);
+    border-radius: 12px; padding: 12px 16px; min-width: 96px; max-width: 180px;
+    text-align: center; cursor: grab; user-select: none;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+    font-size: 13px; font-weight: 500; line-height: 1.4;
+    transition: border-color .12s, box-shadow .12s;
+  }
+  /* top 側標籤：底邊貼齊引線頂端（y） */
+  .node-tag.anchor-bottom { transform: translate(-50%, -100%); }
+  /* bottom 側標籤：頂邊貼齊引線底端（y） */
+  .node-tag.anchor-top { transform: translate(-50%, 0); }
+  .node-tag.dragging { transform: translate(-50%, -50%); }
+  .node-tag:hover { border-color: var(--gold); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+  .node-tag:active { cursor: grabbing; }
+  .node-tag.dragging { opacity: 0.7; z-index: 30; }
+  .node-tag .nt-text { overflow-wrap: break-word; }
+  .node-tag[data-status="idea"] { border-left: 5px solid var(--idea); }
+  .node-tag[data-status="progress"] { border-left: 5px solid var(--progress); }
+  .node-tag[data-status="feature"] { border-left: 5px solid var(--feature); }
+  .node-tag[data-status="done"] { border-left: 5px solid var(--done); }
+  .node-tag[data-status="post"] { border-left: 5px solid var(--post); }
+  .node-tag .nt-note-dot {
+    position: absolute; top: 6px; right: 8px;
+    width: 6px; height: 6px; border-radius: 50%; background: var(--gold);
+  }
+  .node-tag .nt-del {
+    position: absolute; top: -8px; right: -8px; width: 20px; height: 20px;
+    border-radius: 50%; background: var(--danger); color: #fff; border: none;
+    font-size: 12px; display: none; align-items: center; justify-content: center;
+    cursor: pointer; line-height: 1; z-index: 5;
+  }
+  .detail.editing .node-tag .nt-del { display: flex; }
+  .detail.editing .node-tag { cursor: default; }
+
+  /* 未排入標籤（pool 裡的樣式） */
+  .tag {
+    font-size: 12.5px; font-weight: 500; color: var(--text);
+    background: var(--bg); border: 1px solid var(--border); border-left: 3px solid var(--gold);
+    padding: 8px 10px; border-radius: 9px; cursor: grab;
+    display: flex; align-items: center; gap: 5px; user-select: none; position: relative;
+  }
+  .tag:active { cursor: grabbing; }
+  .tag.dragging { opacity: 0.4; }
+  .tag .tag-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+  .tag[data-status="idea"] { border-left-color: var(--idea); }
+  .tag[data-status="progress"] { border-left-color: var(--progress); }
+  .tag[data-status="feature"] { border-left-color: var(--feature); }
+  .tag[data-status="done"] { border-left-color: var(--done); }
+  .tag[data-status="post"] { border-left-color: var(--post); }
+  .tag .tag-del {
+    display: none; color: #fff; background: var(--danger); border-radius: 50%;
+    width: 16px; height: 16px; font-size: 11px; line-height: 1;
+    align-items: center; justify-content: center; flex-shrink: 0; cursor: pointer;
+  }
+  .detail.editing .tag .tag-del { display: flex; }
+
+  /* modal 通用 */
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    display: none; align-items: center; justify-content: center; z-index: 200; padding: 20px; backdrop-filter: blur(2px);
+  }
+  .modal-overlay.open { display: flex; }
+  .modal { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; width: 100%; max-width: 440px; max-height: 88vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
+  .modal-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 22px 14px; }
+  .modal-head h3 { font-size: 16px; font-weight: 700; }
+  .modal-close { width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center; }
+  .modal-close:hover { color: var(--text); border-color: var(--gold); }
+  .modal-body { padding: 0 22px 22px; display: flex; flex-direction: column; gap: 16px; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 12px; color: var(--text2); font-weight: 600; }
+  .field input[type=text], .field input[type=date], .field input[type=number], .field textarea, .field select {
+    font-family: 'Noto Sans TC', sans-serif; background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    font-size: 14px; padding: 10px 12px; border-radius: 10px; outline: none; width: 100%; resize: vertical; color-scheme: light;
+  }
+  body.dark .field input[type=date] { color-scheme: dark; }
+  .field textarea { min-height: 100px; line-height: 1.6; }
+  .field input:focus, .field textarea:focus, .field select:focus { border-color: var(--gold); }
+  .field-row { display: flex; gap: 10px; }
+  .field-row .field { flex: 1; }
+  .modal-foot { display: flex; gap: 10px; padding: 0 22px 22px; }
+  .modal-foot button { font-family: 'Noto Sans TC', sans-serif; flex: 1; border: none; border-radius: 10px; padding: 11px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .modal-foot .save { background: var(--gold); color: #fff; }
+  .modal-foot .save:hover { filter: brightness(1.08); }
+  .modal-foot .del { background: transparent; color: var(--danger); border: 1px solid var(--border); flex: 0 0 auto; padding: 11px 16px; }
+  .modal-foot .del:hover { border-color: var(--danger); }
+  .meta-line { font-size: 11px; color: var(--text3); padding: 0 22px 14px; }
+  .hint-text { font-size: 11px; color: var(--text3); line-height: 1.5; }
+
+  footer { text-align: center; margin-top: 40px; font-size: 12px; color: var(--text3); }
+  ::-webkit-scrollbar { height: 10px; width: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
+
+  @media (max-width: 640px) {
+    .detail-title { max-width: 150px; font-size: 15px; }
+    .float-head { max-width: calc(100vw - 150px); }
+    .pool-panel { width: 150px; }
+  }
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+</head>
+<body>
+
+<!-- ============ 主畫面 grid ============ -->
+<div class="top-container" id="gridView">
+  <header>
+    <div class="brand" id="brandHome">
+      <h1>DevTimeline</h1>
+      <p>追蹤每個開發中工具的專案進度</p>
+    </div>
+    <div class="header-right">
+      <div class="sync-status"><div class="sync-dot" id="syncDot"></div><span id="syncLabel">本機儲存</span></div>
+      <div class="toolbar">
+        <button class="tool-btn" id="gridEditBtn" title="編輯專案（勾選完成／刪除）"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+        <button class="tool-btn" id="theme-btn" title="切換深色模式">
+          <svg id="icon-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <svg id="icon-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:none">
+            <circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
+        <button class="tool-btn" id="exportBtn" title="匯出備份"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9m0 0l-4 4m4-4l4 4M4 6V4a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/></svg></button>
+        <button class="tool-btn" id="importBtn" title="匯入備份"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 18v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg></button>
+        <input type="file" id="importFile" accept="application/json" style="display:none">
+      </div>
+    </div>
+  </header>
+  <div class="grid" id="grid"></div>
+  <footer>持續更新中 · 資料儲存在本機瀏覽器</footer>
+</div>
+
+<!-- ============ 全螢幕流程圖 ============ -->
+<div class="detail" id="detailView">
+  <div class="float-head">
+    <button class="fh-btn" id="backBtn" title="返回"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg></button>
+    <input class="detail-title" id="detailTitle" placeholder="專案名稱">
+    <button class="fh-btn" id="detailTheme" title="切換深色模式">
+      <svg id="icon-moon2" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <svg id="icon-sun2" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:none"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="4.22" y1="4.22" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.78" y2="19.78"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/><line x1="4.22" y1="19.78" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.78" y2="4.22"/></svg>
+    </button>
+  </div>
+
+  <div class="float-tools">
+    <button class="ft-btn add" id="addTagBtn" title="製作新標籤"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+    <button class="ft-btn trash" id="trashBtn" title="編輯模式"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+  </div>
+
+  <div class="edit-banner">編輯模式 — 可拖曳標籤移動位置、點紅色 × 刪除；完成後再按一次垃圾桶結束</div>
+
+  <div class="pool-panel" id="poolPanel">
+    <div class="pp-title">未排入標籤</div>
+    <div id="poolList"></div>
+  </div>
+
+  <div class="canvas" id="canvas">
+    <div class="canvas-inner" id="canvasInner">
+      <div class="zoom-layer" id="zoomLayer">
+        <svg class="lead-svg" id="leadSvg"></svg>
+      </div>
+    </div>
+  </div>
+
+  <div class="zoom-ctrl" id="zoomCtrl">
+    <button id="zoomIn" title="放大">＋</button>
+    <div class="zoom-level" id="zoomLevel">100%</div>
+    <button id="zoomOut" title="縮小">－</button>
+    <div class="zoom-div"></div>
+    <button id="zoomFit" title="顯示全部">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3m8 0h3a2 2 0 0 0 2-2v-3"/></svg>
+    </button>
+  </div>
+</div>
+
+<!-- Tag detail modal -->
+<div class="modal-overlay" id="tagModal">
+  <div class="modal">
+    <div class="modal-head"><h3>編輯標籤</h3><button class="modal-close" id="modalClose">×</button></div>
+    <div class="modal-body">
+      <div class="field"><label>標籤標題</label><input type="text" id="modalTitle" placeholder="例如：加入登入功能"></div>
+      <div class="field"><label>分類</label><select id="modalStatus"></select></div>
+      <div class="field"><label>詳細內容 / 備註</label><textarea id="modalNote" placeholder="記錄跟這個項目有關的討論、決策、待辦、想法..."></textarea></div>
+    </div>
+    <div class="meta-line" id="modalMeta"></div>
+    <div class="modal-foot"><button class="del" id="modalDelete">刪除</button><button class="save" id="modalSave">儲存</button></div>
+  </div>
+</div>
+
+<!-- New project modal (先選時間) -->
+<div class="modal-overlay" id="projModal">
+  <div class="modal">
+    <div class="modal-head"><h3>新增專案</h3><button class="modal-close" id="projClose">×</button></div>
+    <div class="modal-body">
+      <div class="field"><label>專案名稱</label><input type="text" id="projName" placeholder="例如：新的工具構想"></div>
+      <div class="field-row">
+        <div class="field"><label>開始日期</label><input type="date" id="projStart"></div>
+        <div class="field"><label>結束日期</label><input type="date" id="projEnd"></div>
+      </div>
+      <div class="hint-text">中間每一天都會自動成為時間軸上的一個日期點。之後可用右上角箭頭往後延長。</div>
+    </div>
+    <div class="modal-foot"><button class="save" id="projCreate">建立專案</button></div>
+  </div>
+</div>
+
+<!-- Extend range modal (點箭頭) -->
+<div class="modal-overlay" id="extendModal">
+  <div class="modal">
+    <div class="modal-head"><h3>延長時間軸</h3><button class="modal-close" id="extendClose">×</button></div>
+    <div class="modal-body">
+      <div class="field"><label>往後延長天數</label><input type="number" id="extendDays" min="1" max="120" placeholder="例如 7"></div>
+      <div class="hint-text" id="extendHint"></div>
+    </div>
+    <div class="modal-foot"><button class="save" id="extendConfirm">延長</button></div>
+  </div>
+</div>
+
+<script>
+/* ===================== 資料層 ===================== */
+const STORAGE_KEY = "devtimeline_v4";
+
+// 版面常數（migrate 會用到，需先定義）
+const GRID = 24;                 // 方格大小（對齊用）
+const MIN_GAP = 6 * GRID;        // 相鄰日期最小水平間距
+const PER_EVENT_GAP = 2 * GRID;
+const LEFT_PAD = 4 * GRID;
+const BASE_LEAD = 3 * GRID;      // 標籤引線長度
+const STACK_STEP = 4 * GRID;
+const TAG_H_EST = 2 * GRID;
+function snap(v){ return Math.round(v / GRID) * GRID; }
+
+function uid(){ return Math.random().toString(36).slice(2,10); }
+function todayStr(){ return new Date().toISOString().slice(0,10); }
+function addDays(dateStr, n){ const d = new Date(dateStr+"T00:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+function daysBetween(a, b){ return Math.round((new Date(b+"T00:00:00") - new Date(a+"T00:00:00")) / 86400000); }
+function buildDateRange(start, end){
+  const out = []; let d = start;
+  while(d <= end){ out.push(d); d = addDays(d, 1); if(out.length > 400) break; }
+  return out;
+}
+function mkProjectWithRange(title, start, end){
+  const dates = buildDateRange(start, end);
+  return { id: uid(), title, start, end, cells: dates.map(dt => ({ id: uid(), date: dt })), tags: [] };
+}
+
+const DEFAULT_DATA = (function(){
+  const t = todayStr();
+  return { projects: [
+    mkProjectWithRange("JPmap（日本旅遊地圖）", t, addDays(t, 6)),
+    mkProjectWithRange("機票比價通知系統", t, addDays(t, 6)),
+    mkProjectWithRange("社群書籤管理器", t, addDays(t, 6)),
+    mkProjectWithRange("信用卡結算工具", t, addDays(t, 6)),
+    mkProjectWithRange("餐廳推薦 LINE Bot", t, addDays(t, 6)),
+  ]};
+})();
+
+function migrate(data){
+  const MAX_REASONABLE_DAYS = 120; // 超過視為壞資料
+  data.projects.forEach(p => {
+    if(!p.cells) p.cells = [];
+    if(!p.tags) p.tags = [];
+    if(p.done === undefined) p.done = false;
+
+    // 去重：同一天只留一個 cell
+    const byDate = {};
+    p.cells.forEach(c => { if(c && c.date && !byDate[c.date]) byDate[c.date] = c; });
+    let cellDates = Object.keys(byDate).sort();
+
+    // 偵測壞資料：天數過多，或日期跨距過大
+    let needFix = false;
+    if(cellDates.length > MAX_REASONABLE_DAYS) needFix = true;
+    if(cellDates.length >= 2){
+      const span = daysBetween(cellDates[0], cellDates[cellDates.length-1]);
+      if(span > MAX_REASONABLE_DAYS || span < 0) needFix = true;
+    }
+
+    if(needFix){
+      // 以「有掛標籤的日期」為核心保留；若無，收斂成從今天起 7 天
+      const usedCellIds = new Set(p.tags.map(t => t.cellId).filter(Boolean));
+      const usedDates = p.cells.filter(c => usedCellIds.has(c.id)).map(c => c.date).filter(Boolean).sort();
+      if(usedDates.length > 0){
+        const s = usedDates[0];
+        let e = usedDates[usedDates.length-1];
+        if(daysBetween(s, e) > MAX_REASONABLE_DAYS) e = addDays(s, 30);
+        if(daysBetween(s, e) < 6) e = addDays(s, 6); // 至少 7 天，避免軸太短
+        const range = buildDateRange(s, e);
+        // 重建 cells，但盡量保留原本掛標籤那幾天的 cell id
+        const dateToOldId = {};
+        p.cells.forEach(c => { if(c && c.date && usedCellIds.has(c.id)) dateToOldId[c.date] = c.id; });
+        p.cells = range.map(dt => ({ id: dateToOldId[dt] || uid(), date: dt }));
+        p.start = s; p.end = e;
+      } else {
+        const s = todayStr(), e = addDays(s, 6);
+        p.cells = buildDateRange(s, e).map(dt => ({ id: uid(), date: dt }));
+        p.start = s; p.end = e;
+        // 標籤全部退回未排入（因為 cell 重建了）
+        p.tags.forEach(t => { t.cellId = null; });
+      }
+    } else {
+      // 正常資料：套用去重結果
+      p.cells = cellDates.map(dt => byDate[dt]);
+    }
+
+    // 補 start/end
+    if(!p.start || !p.end || p.start > p.end){
+      const ds = p.cells.map(c => c.date).sort();
+      p.start = ds[0] || todayStr();
+      p.end = ds[ds.length-1] || p.start;
+    }
+
+    // cell 補 gapAfter 預設
+    p.cells.forEach(c => { if(c.gapAfter === undefined) c.gapAfter = 0; });
+
+    p.tags.forEach(t => {
+      if(t.note === undefined) t.note = "";
+      if(!t.status) t.status = "feature";
+      if(!t.side) t.side = "top";
+      if(t.len === undefined) t.len = BASE_LEAD;
+      if(t.placed === undefined){
+        if(t.cellId){
+          const idx = p.cells.findIndex(c => c.id === t.cellId);
+          t.placed = true;
+          t.x = idx >= 0 ? (LEFT_PAD + idx * MIN_GAP) : LEFT_PAD;
+        } else {
+          t.placed = false;
+          t.x = 0;
+        }
+      }
+      if(t.x === undefined) t.x = 0;
+    });
+  });
+  return data;
+}
+function loadData(){
+  try{ const raw = localStorage.getItem(STORAGE_KEY); if(raw){ const p = JSON.parse(raw); if(p && Array.isArray(p.projects)){ const m = migrate(p); return m; } } }
+  catch(e){ console.warn("讀取失敗", e); }
+  return JSON.parse(JSON.stringify(DEFAULT_DATA));
+}
+function saveData(){
+  state.updatedAt = Date.now();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  scheduleCloudPush();
+}
+let state = loadData();
+saveData(); // 修正後的資料立即寫回
+
+/* ===================== Firebase 雲端同步 ===================== */
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDL9qLdSpuMQ6eleu4K49GyQnXsoQesiAY",
+  authDomain: "devtimeline.firebaseapp.com",
+  projectId: "devtimeline",
+  storageBucket: "devtimeline.firebasestorage.app",
+  messagingSenderId: "401722283232",
+  appId: "1:401722283232:web:90d50e8e276ac99ba22c85"
+};
+const SYNC_DOC_ID = "20030827";
+
+let db = null;
+let cloudReady = false;
+let applyingRemote = false;   // 套用遠端資料時避免回寫觸發迴圈
+let pushTimer = null;
+
+function setSyncStatus(kind, text){
+  const dot = document.getElementById("syncDot");
+  const label = document.getElementById("syncLabel");
+  if(!dot || !label) return;
+  dot.className = "sync-dot" + (kind ? " " + kind : "");
+  label.textContent = text;
+}
+
+function initFirebaseSync(){
+  try{
+    if(typeof firebase === "undefined"){ setSyncStatus("error", "同步套件載入失敗"); return; }
+    firebase.initializeApp(FIREBASE_CONFIG);
+    db = firebase.firestore();
+    cloudReady = true;
+    setSyncStatus("syncing", "同步中…");
+
+    const docRef = db.collection("devtimeline").doc(SYNC_DOC_ID);
+
+    // 首次讀取：比較本機與雲端的時間戳，較新的一方勝出
+    docRef.get().then(snap => {
+      if(snap.exists){
+        const remote = snap.data();
+        if(remote && Array.isArray(remote.projects)){
+          const remoteTime = remote.updatedAt || 0;
+          const localTime = state.updatedAt || 0;
+          if(remoteTime > localTime){
+            applyingRemote = true;
+            state = migrate(JSON.parse(JSON.stringify(remote)));
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            applyingRemote = false;
+            // 重新渲染目前畫面
+            if(detailView.classList.contains("active")) renderDetail(); else renderGrid();
+          } else if(localTime > remoteTime){
+            pushToCloud(); // 本機較新，回寫雲端
+          }
+        }
+      } else {
+        pushToCloud(); // 雲端還沒有資料，先建立
+      }
+      setSyncStatus("synced", "已同步");
+      listenRemoteChanges(docRef);
+    }).catch(err => {
+      console.warn("Firestore 讀取失敗", err);
+      setSyncStatus("error", "離線（僅本機）");
+    });
+  }catch(err){
+    console.warn("Firebase 初始化失敗", err);
+    setSyncStatus("error", "離線（僅本機）");
+  }
+}
+
+function listenRemoteChanges(docRef){
+  docRef.onSnapshot(snap => {
+    if(!snap.exists) return;
+    const remote = snap.data();
+    if(!remote || !Array.isArray(remote.projects)) return;
+    const remoteTime = remote.updatedAt || 0;
+    if(remoteTime <= (state.updatedAt || 0)) return; // 自己剛寫的，忽略
+    applyingRemote = true;
+    state = migrate(JSON.parse(JSON.stringify(remote)));
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    applyingRemote = false;
+    if(detailView.classList.contains("active")) renderDetail(); else renderGrid();
+    setSyncStatus("synced", "已同步（其他裝置更新）");
+    setTimeout(() => setSyncStatus("synced", "已同步"), 2500);
+  }, err => {
+    console.warn("Firestore 監聽失敗", err);
+    setSyncStatus("error", "離線（僅本機）");
+  });
+}
+
+function pushToCloud(){
+  if(!cloudReady || !db) return;
+  db.collection("devtimeline").doc(SYNC_DOC_ID).set(state)
+    .then(() => setSyncStatus("synced", "已同步"))
+    .catch(err => { console.warn("Firestore 寫入失敗", err); setSyncStatus("error", "離線（僅本機）"); });
+}
+
+function scheduleCloudPush(){
+  if(applyingRemote) return; // 套用遠端資料造成的 saveData，不要再推回去
+  if(!cloudReady) return;
+  setSyncStatus("syncing", "同步中…");
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(pushToCloud, 800); // debounce，避免頻繁寫入
+}
+
+/* ===================== 常數 ===================== */
+const STATUS_OPTIONS = [
+  {v:"idea", label:"構思中"}, {v:"progress", label:"製作流程"},
+  {v:"feature", label:"新增功能"}, {v:"post", label:"社群貼文"}, {v:"done", label:"已完成"},
+];
+function fmtDate(dateStr){
+  const d = new Date(dateStr+"T00:00:00");
+  if(isNaN(d)) return "--";
+  return `${d.getMonth()+1}/${d.getDate()}`;
+}
+
+/* ===================== 檢視狀態 ===================== */
+let currentProjectId = null;
+let editing = false;
+
+const gridView = document.getElementById("gridView");
+const detailView = document.getElementById("detailView");
+const grid = document.getElementById("grid");
+const canvas = document.getElementById("canvas");
+const canvasInner = document.getElementById("canvasInner");
+const leadSvg = document.getElementById("leadSvg");
+const detailTitle = document.getElementById("detailTitle");
+const poolPanel = document.getElementById("poolPanel");
+const poolList = document.getElementById("poolList");
+
+function curProject(){ return state.projects.find(p => p.id === currentProjectId); }
+
+function goHome(){
+  currentProjectId = null; editing = false;
+  detailView.classList.remove("active", "editing");
+  document.getElementById("trashBtn").classList.remove("active");
+  gridView.style.display = "";
+  renderGrid();
+}
+function openProject(id){
+  currentProjectId = id; editing = false;
+  zoom = 1;
+  gridView.style.display = "none";
+  detailView.classList.add("active");
+  detailView.classList.remove("editing");
+  document.getElementById("trashBtn").classList.remove("active");
+  syncDetailThemeIcon();
+  renderDetail();
+}
+
+/* ===================== 主畫面網格 ===================== */
+let gridEditing = false;
+
+function renderGrid(){
+  grid.innerHTML = "";
+  grid.classList.toggle("editing", gridEditing);
+  document.getElementById("gridEditBtn").classList.toggle("active", gridEditing);
+
+  state.projects.forEach(project => {
+    const card = document.createElement("div");
+    card.className = "proj-card" + (project.done ? " done" : "");
+    if(!gridEditing) card.onclick = () => openProject(project.id);
+
+    // 完成標記
+    const badge = document.createElement("div");
+    badge.className = "pc-done-badge";
+    badge.innerHTML = `<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>完成`;
+    card.appendChild(badge);
+
+    const top = document.createElement("div"); top.className = "pc-top";
+    const dot = document.createElement("div"); dot.className = "pc-dot";
+    const title = document.createElement("div"); title.className = "pc-title"; title.textContent = project.title;
+    top.appendChild(dot); top.appendChild(title);
+    const range = document.createElement("div"); range.className = "pc-range";
+    range.textContent = `${project.start} → ${project.end}`;
+    const bars = document.createElement("div"); bars.className = "pc-bars";
+    const total = Math.max(5, project.cells.length);
+    for(let i=0;i<Math.min(total,10);i++){ const b = document.createElement("div"); b.className = "pc-bar" + (i < project.cells.length ? " on" : ""); bars.appendChild(b); }
+    const meta = document.createElement("div"); meta.className = "pc-meta";
+    const dayCount = daysBetween(project.start, project.end) + 1;
+    meta.textContent = `${dayCount} 天 · ${project.tags.length} 個標籤`;
+    card.appendChild(top); card.appendChild(range); card.appendChild(bars); card.appendChild(meta);
+
+    // 編輯列
+    const editRow = document.createElement("div");
+    editRow.className = "pc-edit-row";
+    const completeBtn = document.createElement("button");
+    completeBtn.className = "pc-btn complete" + (project.done ? " on" : "");
+    completeBtn.innerHTML = project.done
+      ? `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>已完成`
+      : `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>標記完成`;
+    completeBtn.onclick = (e) => {
+      e.stopPropagation();
+      project.done = !project.done;
+      saveData(); renderGrid();
+    };
+    const removeBtn = document.createElement("button");
+    removeBtn.className = "pc-btn remove";
+    removeBtn.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>刪除`;
+    removeBtn.onclick = (e) => {
+      e.stopPropagation();
+      if(confirm(`確定要刪除「${project.title}」嗎？此動作無法復原。`)){
+        state.projects = state.projects.filter(p => p.id !== project.id);
+        saveData(); renderGrid();
+      }
+    };
+    editRow.appendChild(completeBtn); editRow.appendChild(removeBtn);
+    card.appendChild(editRow);
+
+    grid.appendChild(card);
+  });
+
+  const addCard = document.createElement("div");
+  addCard.className = "add-card"; addCard.innerHTML = "＋ 新增專案";
+  addCard.onclick = openProjModal;
+  grid.appendChild(addCard);
+}
+
+document.getElementById("gridEditBtn").onclick = () => {
+  gridEditing = !gridEditing;
+  renderGrid();
+};
+
+/* ===================== 新增專案 modal ===================== */
+const projModal = document.getElementById("projModal");
+function openProjModal(){
+  document.getElementById("projName").value = "";
+  document.getElementById("projStart").value = todayStr();
+  document.getElementById("projEnd").value = addDays(todayStr(), 6);
+  projModal.classList.add("open");
+  setTimeout(()=>document.getElementById("projName").focus(), 50);
+}
+document.getElementById("projClose").onclick = () => projModal.classList.remove("open");
+projModal.addEventListener("click", e => { if(e.target === projModal) projModal.classList.remove("open"); });
+document.getElementById("projCreate").onclick = () => {
+  const name = document.getElementById("projName").value.trim() || "未命名專案";
+  const s = document.getElementById("projStart").value;
+  const e = document.getElementById("projEnd").value;
+  if(!s || !e){ alert("請選擇開始與結束日期"); return; }
+  if(e < s){ alert("結束日期不能早於開始日期"); return; }
+  const p = mkProjectWithRange(name, s, e);
+  state.projects.push(p); saveData();
+  projModal.classList.remove("open");
+  openProject(p.id);
+};
+
+/* ===================== 計算節點座標 ===================== */
+// 回傳 { cellPositions: {cellId: {x, date}}, axisY, width, height }
+function computeLayout(project){
+  // 去重＋排序：同一天只保留一個節點
+  const seen = new Set();
+  const sorted = [...project.cells]
+    .filter(c => c && c.date)
+    .sort((a,b)=> a.date.localeCompare(b.date))
+    .filter(c => { if(seen.has(c.date)) return false; seen.add(c.date); return true; });
+
+  // 固定間距排列日期點，但若 cell 有自訂 offset 則加上
+  const positions = {};
+  let x = LEFT_PAD;
+  sorted.forEach((c, i) => {
+    if(i > 0){
+      // 前一天若被往右拖，會加大這一段間距
+      const extra = (sorted[i-1].gapAfter || 0);
+      x += MIN_GAP + extra;
+    }
+    positions[c.id] = { x: x, date: c.date };
+  });
+
+  const lastDateX = sorted.length ? positions[sorted[sorted.length-1].id].x : LEFT_PAD;
+  // 內容寬度需容納最右的日期點與最右的標籤
+  let maxTagX = 0;
+  project.tags.filter(t => t.placed).forEach(t => { if(t.x > maxTagX) maxTagX = t.x; });
+  const contentWidth = Math.max(lastDateX, maxTagX) + 8 * GRID;
+
+  // 上下空間固定（標籤自由排位，不需依堆疊層數）
+  const topSpace = BASE_LEAD + 6 * GRID;
+  const bottomSpace = BASE_LEAD + 6 * GRID;
+  const contentHeight = topSpace + bottomSpace;
+  const axisY = snap(topSpace);
+
+  return { sorted, positions, axisY, contentWidth, contentHeight };
+}
+
+/* ===================== 縮放狀態 ===================== */
+let zoom = 1;
+let curLayout = null;
+const ZOOM_MIN = 0.25, ZOOM_MAX = 2;
+const zoomLayer = document.getElementById("zoomLayer");
+
+function applyZoom(){
+  const layout = curLayout; if(!layout) return;
+  // 內容縮放後的實際尺寸
+  const scaledW = layout.contentWidth * zoom;
+  const scaledH = layout.contentHeight * zoom;
+  // canvas-inner 至少要跟可視區一樣大，好讓內容置中
+  const viewW = canvas.clientWidth, viewH = canvas.clientHeight;
+  const innerW = Math.max(viewW, scaledW);
+  const innerH = Math.max(viewH, scaledH);
+  canvasInner.style.width = innerW + "px";
+  canvasInner.style.height = innerH + "px";
+  // 垂直置中：內容比可視區小則置中，否則貼齊
+  const offsetY = scaledH < viewH ? (viewH - scaledH) / 2 : 0;
+  const offsetX = scaledW < viewW ? (viewW - scaledW) / 2 : 0;
+  zoomLayer.style.transform = `translate(${offsetX}px, ${offsetY}px) scale(${zoom})`;
+  document.getElementById("zoomLevel").textContent = Math.round(zoom * 100) + "%";
+}
+function setZoom(z, keepScroll){
+  zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, z));
+  applyZoom();
+}
+function zoomToFit(){
+  const layout = curLayout; if(!layout) return;
+  const viewW = canvas.clientWidth - 40, viewH = canvas.clientHeight - 40;
+  const zx = viewW / layout.contentWidth;
+  const zy = viewH / layout.contentHeight;
+  zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min(zx, zy)));
+  applyZoom();
+  canvas.scrollLeft = 0; canvas.scrollTop = 0;
+}
+
+/* ===================== 渲染流程圖 ===================== */
+function renderDetail(){
+  const project = curProject();
+  if(!project){ goHome(); return; }
+  detailTitle.value = project.title;
+  detailView.classList.toggle("editing", editing);
+
+  // 清除舊節點（保留 svg，它在 zoomLayer 內）
+  Array.from(zoomLayer.querySelectorAll(".axis-node, .node-tag, .axis-arrow")).forEach(n => n.remove());
+  leadSvg.innerHTML = "";
+
+  const layout = computeLayout(project);
+  curLayout = layout;
+  zoomLayer.style.width = layout.contentWidth + "px";
+  zoomLayer.style.height = layout.contentHeight + "px";
+  leadSvg.setAttribute("viewBox", `0 0 ${layout.contentWidth} ${layout.contentHeight}`);
+  leadSvg.setAttribute("width", layout.contentWidth);
+  leadSvg.setAttribute("height", layout.contentHeight);
+
+  const axisY = layout.axisY;
+
+  // 畫時間軸主線（粗）
+  const firstX = LEFT_PAD - 2*GRID;
+  const endX = layout.contentWidth - 3*GRID;
+  addSvgLine(firstX, axisY, endX, axisY, "axis-line");
+  // 箭頭
+  drawArrow(endX, axisY, project);
+
+  // 日期節點
+  layout.sorted.forEach((cell, cellIdx) => {
+    const px = layout.positions[cell.id].x;
+    addSvgLine(px, axisY - 6, px, axisY + 6, "axis-tick");
+    const node = document.createElement("div");
+    node.className = "axis-node" + (editing ? " draggable" : "");
+    node.style.left = px + "px";
+    node.style.top = axisY + "px";
+    const dot = document.createElement("div"); dot.className = "axis-dot";
+    const date = document.createElement("div"); date.className = "axis-date"; date.textContent = fmtDate(cell.date);
+    node.appendChild(dot); node.appendChild(date);
+
+    // 編輯模式：拖日期點向右，拉開與前一天的間距
+    if(editing && cellIdx > 0){
+      const prevCell = layout.sorted[cellIdx - 1];
+      makeDateDraggable(node, project, prevCell, cell, layout, cellIdx);
+    }
+    zoomLayer.appendChild(node);
+  });
+
+  // 標籤（已排入）— 自由 x 座標，引線垂直，長度為拖曳時的實際落點距離
+  project.tags.filter(t => t.placed).forEach(tag => {
+    const leadX = tag.x;
+    const leadLen = (tag.len && tag.len > GRID) ? tag.len : BASE_LEAD;
+    let tagY;
+    if(tag.side === "top"){
+      tagY = axisY - leadLen;
+      addSvgLine(leadX, axisY, leadX, tagY, "lead-line");
+    } else {
+      tagY = axisY + leadLen;
+      addSvgLine(leadX, axisY, leadX, tagY, "lead-line");
+    }
+    zoomLayer.appendChild(renderNodeTag(project, tag, leadX, tagY, tag.side));
+  });
+
+  renderPool(project);
+  applyZoom();
+}
+
+function addSvgLine(x1,y1,x2,y2,cls){
+  const l = document.createElementNS("http://www.w3.org/2000/svg","line");
+  l.setAttribute("x1",x1); l.setAttribute("y1",y1); l.setAttribute("x2",x2); l.setAttribute("y2",y2);
+  l.setAttribute("class", cls);
+  leadSvg.appendChild(l);
+  return l;
+}
+function drawArrow(x, y, project){
+  const path = document.createElementNS("http://www.w3.org/2000/svg","polyline");
+  path.setAttribute("points", `${x-14},${y-10} ${x},${y} ${x-14},${y+10}`);
+  path.setAttribute("fill","none");
+  path.setAttribute("stroke","var(--axis)");
+  path.setAttribute("stroke-width","4");
+  path.setAttribute("stroke-linecap","round");
+  path.setAttribute("stroke-linejoin","round");
+  leadSvg.appendChild(path);
+  // 可點擊的透明區塊
+  const hit = document.createElement("div");
+  hit.className = "axis-arrow";
+  hit.style.left = (x-18) + "px"; hit.style.top = (y-20) + "px";
+  hit.style.width = "40px"; hit.style.height = "40px";
+  hit.title = "延長時間軸";
+  hit.onclick = () => openExtendModal(project);
+  zoomLayer.appendChild(hit);
+}
+
+/* ===== 標籤節點（畫布上） ===== */
+function renderNodeTag(project, tag, x, y, side){
+  const el = document.createElement("div");
+  el.className = "node-tag " + (side === "top" ? "anchor-bottom" : "anchor-top");
+  el.dataset.status = tag.status;
+  el.dataset.tagId = tag.id;
+  el.style.left = x + "px";
+  el.style.top = y + "px";  // y = 引線端點；用 transform 讓標籤邊緣貼齊
+
+  const txt = document.createElement("div"); txt.className = "nt-text"; txt.textContent = tag.text;
+  el.appendChild(txt);
+  if(tag.note && tag.note.trim()){ const nd = document.createElement("div"); nd.className = "nt-note-dot"; el.appendChild(nd); }
+
+  const del = document.createElement("button");
+  del.className = "nt-del"; del.textContent = "×";
+  del.onclick = (e) => { e.stopPropagation(); project.tags = project.tags.filter(t => t.id !== tag.id); saveData(); renderDetail(); };
+  el.appendChild(del);
+
+  // 點擊編輯（平常點＝編輯；編輯模式下不觸發，改為拖曳）
+  el.addEventListener("click", (e) => {
+    if(editing) return;
+    if(el._moved) return;
+    if(e.target.classList.contains("nt-del")) return;
+    openTagModal(project, tag);
+  });
+
+  makeTagDraggable(el, project, tag);
+  return el;
+}
+
+/* ===== 日期點拖曳（編輯模式，調整與前一天的間距）===== */
+function makeDateDraggable(node, project, prevCell, cell, layout, cellIdx){
+  node.addEventListener("pointerdown", (e) => {
+    if(!editing) return;
+    e.preventDefault();
+    let moved = false;
+    function move(ev){
+      const p = screenToLayer(ev.clientX, ev.clientY);
+      updateEdgeScroll(ev.clientX, ev.clientY);
+      const L = curLayout || computeLayout(project);
+      const prevX = L.positions[prevCell.id] ? L.positions[prevCell.id].x : LEFT_PAD;
+      let newExtra = snap(p.x - prevX - MIN_GAP);
+      if(newExtra < 0) newExtra = 0;
+      if(newExtra > 40 * GRID) newExtra = 40 * GRID; // 上限避免拖太誇張
+      prevCell.gapAfter = newExtra;
+      moved = true;
+      renderDetail();
+    }
+    function up(ev){
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      stopEdgeScroll();
+      if(moved) saveData();
+    }
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+  });
+}
+
+/* ===== 拖曳邏輯：畫布標籤（僅編輯模式）===== */
+let dragCtx = null;
+
+function makeTagDraggable(el, project, tag){
+  el.addEventListener("pointerdown", (e) => {
+    if(!editing) return;                 // 只有編輯模式能拖
+    if(e.target.classList.contains("nt-del")) return;
+    e.preventDefault();
+    el.setPointerCapture(e.pointerId);
+    el._moved = false;
+    dragCtx = { el, project, tag, startX: e.clientX, startY: e.clientY };
+    el.classList.add("dragging");
+  });
+  el.addEventListener("pointermove", (e) => {
+    if(!dragCtx || dragCtx.el !== el) return;
+    const dx = Math.abs(e.clientX - dragCtx.startX), dy = Math.abs(e.clientY - dragCtx.startY);
+    if(dx > 4 || dy > 4) el._moved = true;
+    if(!el._moved) return;
+    updateEdgeScroll(e.clientX, e.clientY);
+    const p = screenToLayer(e.clientX, e.clientY);
+    const layout = curLayout || computeLayout(project);
+    el.style.left = p.x + "px";
+    el.style.top = p.y + "px";
+    // 垂直虛線：從標籤目前 x 垂直對到軸
+    drawGhost(p.x, layout.axisY, p.x, p.y);
+  });
+  el.addEventListener("pointerup", (e) => {
+    if(!dragCtx || dragCtx.el !== el) return;
+    el.classList.remove("dragging");
+    clearGhost();
+    stopEdgeScroll();
+    if(el._moved){
+      const p = screenToLayer(e.clientX, e.clientY);
+      const layout = curLayout || computeLayout(project);
+      tag.x = snap(p.x);
+      tag.side = p.y < layout.axisY ? "top" : "bottom";
+      tag.len = Math.max(GRID*2, snap(Math.abs(p.y - layout.axisY))); // 引線長度＝落點到軸的距離
+      tag.placed = true;
+      saveData();
+      renderDetail();
+    }
+    dragCtx = null;
+  });
+}
+
+// 螢幕座標 → zoomLayer 內部座標（考慮縮放與置中位移）
+function screenToLayer(clientX, clientY){
+  const rect = zoomLayer.getBoundingClientRect();
+  return { x: (clientX - rect.left) / zoom, y: (clientY - rect.top) / zoom };
+}
+function pointInCanvas(clientX, clientY){
+  const r = canvas.getBoundingClientRect();
+  return clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom;
+}
+
+/* ===== 邊緣自動捲動（拖曳時滑鼠靠邊自動捲） ===== */
+let edgeScrollTimer = null;
+let edgeScrollVX = 0, edgeScrollVY = 0;
+function updateEdgeScroll(clientX, clientY){
+  const r = canvas.getBoundingClientRect();
+  const EDGE = 60;      // 邊緣感應範圍
+  const SPEED = 14;     // 每幀捲動量
+  edgeScrollVX = 0; edgeScrollVY = 0;
+  if(clientX > r.right - EDGE) edgeScrollVX = SPEED;
+  else if(clientX < r.left + EDGE) edgeScrollVX = -SPEED;
+  if(clientY > r.bottom - EDGE) edgeScrollVY = SPEED;
+  else if(clientY < r.top + EDGE) edgeScrollVY = -SPEED;
+  if((edgeScrollVX || edgeScrollVY) && !edgeScrollTimer){
+    edgeScrollTimer = setInterval(() => {
+      canvas.scrollLeft += edgeScrollVX;
+      canvas.scrollTop += edgeScrollVY;
+    }, 16);
+  } else if(!edgeScrollVX && !edgeScrollVY){
+    stopEdgeScroll();
+  }
+}
+function stopEdgeScroll(){ if(edgeScrollTimer){ clearInterval(edgeScrollTimer); edgeScrollTimer = null; } edgeScrollVX = edgeScrollVY = 0; }
+
+function nearestCell(layout, x){
+  let best = null, bestD = Infinity;
+  layout.sorted.forEach(c => {
+    const px = layout.positions[c.id].x;
+    const d = Math.abs(px - x);
+    if(d < bestD){ bestD = d; best = { id: c.id, x: px, date: c.date }; }
+  });
+  return best;
+}
+let ghostLine = null;
+function drawGhost(nx, ny, cx, cy){
+  if(!ghostLine){ ghostLine = addSvgLine(nx, ny, cx, cy, "lead-line dragging"); }
+  else { ghostLine.setAttribute("x1", nx); ghostLine.setAttribute("y1", ny); ghostLine.setAttribute("x2", cx); ghostLine.setAttribute("y2", cy); }
+}
+function clearGhost(){ if(ghostLine){ ghostLine.remove(); ghostLine = null; } }
+
+/* ===== Pool（未排入） ===== */
+function renderPool(project){
+  const unplaced = project.tags.filter(t => !t.placed);
+  poolPanel.classList.toggle("show", true);
+  poolList.innerHTML = "";
+  if(unplaced.length === 0){
+    const empty = document.createElement("div");
+    empty.className = "pp-empty";
+    empty.textContent = "按右上角＋製作標籤，做好後拖到畫布任意位置（上方或下方，引線會垂直對到時間軸）";
+    poolList.appendChild(empty);
+    return;
+  }
+  unplaced.forEach(tag => poolList.appendChild(renderPoolTag(project, tag)));
+}
+function renderPoolTag(project, tag){
+  const el = document.createElement("div");
+  el.className = "tag"; el.dataset.status = tag.status;
+  const label = document.createElement("span"); label.className = "tag-text"; label.textContent = tag.text;
+  el.appendChild(label);
+  const del = document.createElement("span"); del.className = "tag-del"; del.textContent = "×";
+  del.onclick = (e) => { e.stopPropagation(); project.tags = project.tags.filter(t => t.id !== tag.id); saveData(); renderDetail(); };
+  el.appendChild(del);
+
+  el.addEventListener("click", (e) => {
+    if(editing) return;
+    if(el._moved) return;
+    if(e.target.classList.contains("tag-del")) return;
+    openTagModal(project, tag);
+  });
+
+  // 從 pool 拖到畫布（平常即可拖，把新標籤放上去）
+  el.addEventListener("pointerdown", (e) => {
+    if(e.target.classList.contains("tag-del")) return;
+    e.preventDefault();
+    el._moved = false;
+    const startX = e.clientX, startY = e.clientY;
+    // 建立一個浮動代理
+    const proxy = el.cloneNode(true);
+    proxy.style.position = "fixed"; proxy.style.zIndex = "300"; proxy.style.pointerEvents = "none";
+    proxy.style.width = el.offsetWidth + "px"; proxy.style.opacity = "0.85";
+    document.body.appendChild(proxy);
+    function move(ev){
+      const dx = Math.abs(ev.clientX - startX), dy = Math.abs(ev.clientY - startY);
+      if(dx > 4 || dy > 4) el._moved = true;
+      proxy.style.left = (ev.clientX - 40) + "px"; proxy.style.top = (ev.clientY - 18) + "px";
+      updateEdgeScroll(ev.clientX, ev.clientY);
+      const layout = curLayout || computeLayout(project);
+      if(pointInCanvas(ev.clientX, ev.clientY)){
+        const p = screenToLayer(ev.clientX, ev.clientY);
+        drawGhost(p.x, layout.axisY, p.x, p.y); // 垂直虛線
+      } else clearGhost();
+    }
+    function up(ev){
+      document.removeEventListener("pointermove", move);
+      document.removeEventListener("pointerup", up);
+      proxy.remove(); clearGhost(); stopEdgeScroll();
+      if(el._moved && pointInCanvas(ev.clientX, ev.clientY)){
+        const p = screenToLayer(ev.clientX, ev.clientY);
+        const layout = curLayout || computeLayout(project);
+        tag.x = snap(p.x);
+        tag.side = p.y < layout.axisY ? "top" : "bottom";
+        tag.len = Math.max(GRID*2, snap(Math.abs(p.y - layout.axisY)));
+        tag.placed = true;
+        saveData(); renderDetail();
+      }
+    }
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", up);
+  });
+  return el;
+}
+
+/* ===================== 製作新標籤（右上角＋） ===================== */
+document.getElementById("addTagBtn").onclick = () => {
+  const project = curProject(); if(!project) return;
+  const tag = { id: uid(), text: "新標籤", status: "feature", note: "", side: "top", x: 0, placed: false };
+  project.tags.push(tag);
+  saveData(); renderDetail();
+  openTagModal(project, tag, true); // 立即開編輯讓使用者改標題
+};
+
+/* ===================== 延長時間軸 ===================== */
+const extendModal = document.getElementById("extendModal");
+let extendCtx = null;
+function openExtendModal(project){
+  extendCtx = project;
+  document.getElementById("extendDays").value = "";
+  document.getElementById("extendHint").textContent = `目前結束於 ${project.end}，往後延長會新增連續日期點。`;
+  extendModal.classList.add("open");
+  setTimeout(()=>document.getElementById("extendDays").focus(), 50);
+}
+document.getElementById("extendClose").onclick = () => extendModal.classList.remove("open");
+extendModal.addEventListener("click", e => { if(e.target === extendModal) extendModal.classList.remove("open"); });
+document.getElementById("extendConfirm").onclick = () => {
+  if(!extendCtx) return;
+  const n = parseInt(document.getElementById("extendDays").value, 10);
+  if(isNaN(n) || n < 1){ alert("請輸入正整數天數"); return; }
+  const existing = new Set(extendCtx.cells.map(c => c.date));
+  for(let i=1;i<=n;i++){ const d = addDays(extendCtx.end, i); if(!existing.has(d)) extendCtx.cells.push({ id: uid(), date: d }); }
+  extendCtx.end = addDays(extendCtx.end, n);
+  saveData(); extendModal.classList.remove("open"); renderDetail();
+};
+
+/* ===================== 標籤詳細 Modal ===================== */
+const modal = document.getElementById("tagModal");
+const modalTitle = document.getElementById("modalTitle");
+const modalStatus = document.getElementById("modalStatus");
+const modalNote = document.getElementById("modalNote");
+const modalMeta = document.getElementById("modalMeta");
+let modalCtx = null;
+STATUS_OPTIONS.forEach(opt => { const o = document.createElement("option"); o.value = opt.v; o.textContent = opt.label; modalStatus.appendChild(o); });
+function openTagModal(project, tag, isNew){
+  modalCtx = { project, tag, isNew: !!isNew };
+  modalTitle.value = tag.text; modalStatus.value = tag.status; modalNote.value = tag.note || "";
+  modalMeta.textContent = tag.placed ? `已排入時間軸（${tag.side === "top" ? "上方" : "下方"}）` : "尚未排入時間軸，可從右側面板拖到畫布";
+  modal.classList.add("open");
+  setTimeout(() => { modalTitle.focus(); modalTitle.select(); }, 50);
+}
+function closeTagModal(){ modal.classList.remove("open"); modalCtx = null; }
+document.getElementById("modalClose").onclick = closeTagModal;
+modal.addEventListener("click", (e) => { if(e.target === modal) closeTagModal(); });
+document.addEventListener("keydown", (e) => { if(e.key === "Escape" && modal.classList.contains("open")) closeTagModal(); });
+document.getElementById("modalSave").onclick = () => {
+  if(!modalCtx) return;
+  const t = modalCtx.tag; const nt = modalTitle.value.trim();
+  if(!nt){ alert("標籤標題不能為空"); return; }
+  t.text = nt; t.status = modalStatus.value; t.note = modalNote.value;
+  saveData(); closeTagModal(); renderDetail();
+};
+document.getElementById("modalDelete").onclick = () => {
+  if(!modalCtx) return;
+  if(confirm("確定要刪除這個標籤嗎？")){
+    const {project, tag} = modalCtx;
+    project.tags = project.tags.filter(x => x.id !== tag.id);
+    saveData(); closeTagModal(); renderDetail();
+  }
+};
+
+/* ===================== 標題編輯 / 返回 / 編輯模式 ===================== */
+detailTitle.addEventListener("input", () => { const p = curProject(); if(p){ p.title = detailTitle.value; saveData(); } });
+document.getElementById("backBtn").onclick = goHome;
+document.getElementById("brandHome").onclick = goHome;
+document.getElementById("trashBtn").onclick = () => {
+  editing = !editing;
+  document.getElementById("trashBtn").classList.toggle("active", editing);
+  renderDetail();
+};
+
+/* ===================== 匯出 / 匯入 ===================== */
+document.getElementById("exportBtn").onclick = () => {
+  const blob = new Blob([JSON.stringify(state, null, 2)], {type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a"); a.href = url; a.download = `devtimeline_backup_${todayStr()}.json`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+};
+document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
+
+/* 將 AI 生成的語意格式轉成內部專案（工具自行計算排版座標） */
+function convertImportedProject(src){
+  let start = String(src.start), end = String(src.end);
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  if(!DATE_RE.test(start) || !DATE_RE.test(end)) throw new Error("bad date");
+  if(end < start){ const t = start; start = end; end = t; }
+  if(daysBetween(start, end) > 120) end = addDays(start, 60);
+
+  const p = mkProjectWithRange(String(src.title).slice(0, 80) || "未命名專案", start, end);
+  p.done = !!src.done;
+
+  const dateIdx = {};
+  p.cells.forEach((c, i) => { dateIdx[c.date] = i; });
+
+  const VALID_STATUS = ["idea","progress","feature","post","done"];
+  const perDate = {};
+  (Array.isArray(src.events) ? src.events : []).forEach(ev => {
+    if(!ev || !ev.date || !ev.title) return;
+    let d = String(ev.date);
+    if(!DATE_RE.test(d)) return;
+    if(isNaN(new Date(d + "T00:00:00"))) return; // 格式對但日期不存在（如 08-99）
+    if(d < start) d = start;
+    if(d > end) d = end;
+    const idx = dateIdx[d];
+    if(idx === undefined) return;
+    const k = perDate[d] = (perDate[d] || 0) + 1;   // 同一天第幾個事件
+    const layer = Math.floor((k - 1) / 2);           // 每兩個一層（上下各一）
+    p.tags.push({
+      id: uid(),
+      text: String(ev.title).slice(0, 40),
+      status: VALID_STATUS.includes(ev.status) ? ev.status : "feature",
+      note: typeof ev.note === "string" ? ev.note : "",
+      side: (k % 2 === 1) ? "top" : "bottom",        // 交錯上下
+      x: snap(LEFT_PAD + idx * MIN_GAP + GRID + layer * 2 * GRID), // 偏右對齊格線、逐層右移
+      len: BASE_LEAD + (layer % 3) * 2 * GRID,       // 逐層加長引線，錯落不疊
+      placed: true
+    });
+  });
+  return p;
+}
+
+document.getElementById("importFile").addEventListener("change", (e) => {
+  const file = e.target.files[0]; if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (evt) => {
+    try{
+      const parsed = JSON.parse(evt.target.result);
+      if(parsed && parsed.format === "devtimeline-project-v1" && parsed.title && parsed.start && parsed.end){
+        // 單一專案：新增，不覆蓋
+        const proj = convertImportedProject(parsed);
+        state.projects.push(proj);
+        saveData(); goHome();
+        alert(`已匯入專案「${proj.title}」（${proj.tags.length} 個事件）`);
+      } else if(parsed && Array.isArray(parsed.projects)){
+        // 完整備份：覆蓋
+        if(confirm("匯入完整備份將覆蓋目前所有資料，確定？")){ state = migrate(parsed); saveData(); goHome(); }
+      } else throw new Error("bad");
+    }catch(err){ alert("匯入失敗：檔案格式不正確"); }
+  };
+  reader.readAsText(file); e.target.value = "";
+});
+
+/* ===================== 主題 ===================== */
+function applyThemeIcons(dark){
+  document.getElementById('icon-moon').style.display = dark ? 'none' : '';
+  document.getElementById('icon-sun').style.display = dark ? '' : 'none';
+  document.getElementById('icon-moon2').style.display = dark ? 'none' : '';
+  document.getElementById('icon-sun2').style.display = dark ? '' : 'none';
+}
+function toggleTheme() {
+  const dark = document.body.classList.toggle('dark');
+  applyThemeIcons(dark);
+  localStorage.setItem('devtimeline-dark', dark ? '1' : '0');
+  if(detailView.classList.contains("active")) renderDetail();
+}
+function syncDetailThemeIcon(){ applyThemeIcons(document.body.classList.contains("dark")); }
+document.getElementById('theme-btn').addEventListener('click', toggleTheme);
+document.getElementById('detailTheme').addEventListener('click', toggleTheme);
+if (localStorage.getItem('devtimeline-dark') === '1') { document.body.classList.add('dark'); applyThemeIcons(true); }
+
+/* ===================== 縮放按鈕 ===================== */
+document.getElementById("zoomIn").onclick = () => setZoom(zoom + 0.15);
+document.getElementById("zoomOut").onclick = () => setZoom(zoom - 0.15);
+document.getElementById("zoomFit").onclick = zoomToFit;
+
+window.addEventListener("resize", () => { if(detailView.classList.contains("active")) renderDetail(); });
+
+/* ===================== 啟動 ===================== */
+renderGrid();
+initFirebaseSync();
+</script>
+
+</body>
+</html>
