@@ -581,6 +581,12 @@ function loadData(){
   catch(e){ console.warn("讀取失敗", e); }
   return JSON.parse(JSON.stringify(DEFAULT_DATA));
 }
+// 同步狀態變數（saveData 會用到，需先宣告）
+let db = null;
+let cloudReady = false;
+let applyingRemote = false;   // 套用遠端資料時避免回寫觸發迴圈
+let pushTimer = null;
+
 function saveData(){
   state.updatedAt = Date.now();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -599,11 +605,6 @@ const FIREBASE_CONFIG = {
   appId: "1:401722283232:web:90d50e8e276ac99ba22c85"
 };
 const SYNC_DOC_ID = "20030827";
-
-let db = null;
-let cloudReady = false;
-let applyingRemote = false;   // 套用遠端資料時避免回寫觸發迴圈
-let pushTimer = null;
 
 function setSyncStatus(kind, text){
   const dot = document.getElementById("syncDot");
