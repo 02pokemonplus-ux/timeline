@@ -500,80 +500,61 @@ const DEFAULT_DATA = (function(){
 })();
 
 function migrate(data){
-  const MAX_REASONABLE_DAYS = 120; // 超過視為壞資料
+  const MAX_REASONABLE_DAYS = 120;
   data.projects.forEach(p => {
     if(!p.cells) p.cells = [];
     if(!p.tags) p.tags = [];
     if(p.done === undefined) p.done = false;
 
-    // 去重：同一天只留一個 cell
+    // 去重：同一天只留一個 cell（保留該日期第一個出現的 cell 物件）
     const byDate = {};
     p.cells.forEach(c => { if(c && c.date && !byDate[c.date]) byDate[c.date] = c; });
     let cellDates = Object.keys(byDate).sort();
 
-    // 偵測壞資料：天數過多，或日期跨距過大
-    let needFix = false;
-    if(cellDates.length > MAX_REASONABLE_DAYS) needFix = true;
-    if(cellDates.length >= 2){
-      const span = daysBetween(cellDates[0], cellDates[cellDates.length-1]);
-      if(span > MAX_REASONABLE_DAYS || span < 0) needFix = true;
+    // 決定權威的 start / end
+    // 優先用既有的合法 start/end；否則用 cells 的日期範圍；再否則用今天起 7 天
+    let start = (typeof p.start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.start)) ? p.start : null;
+    let end   = (typeof p.end === "string" && /^\d{4}-\d{2}-\d{2}$/.test(p.end)) ? p.end : null;
+    if(!start || !end || start > end){
+      if(cellDates.length > 0){ start = cellDates[0]; end = cellDates[cellDates.length-1]; }
+      else { start = todayStr(); end = addDays(start, 6); }
     }
-
-    if(needFix){
-      // 以「有掛標籤的日期」為核心保留；若無，收斂成從今天起 7 天
+    // 範圍過大 → 收斂（以有掛標籤的日期為核心，否則從 start 起 30 天）
+    if(daysBetween(start, end) > MAX_REASONABLE_DAYS || daysBetween(start, end) < 0){
       const usedCellIds = new Set(p.tags.map(t => t.cellId).filter(Boolean));
-      const usedDates = p.cells.filter(c => usedCellIds.has(c.id)).map(c => c.date).filter(Boolean).sort();
+      const usedDates = p.cells.filter(c => usedCellIds.has(c.id)).map(c => c.date).filter(d => typeof d === "string").sort();
       if(usedDates.length > 0){
-        const s = usedDates[0];
-        let e = usedDates[usedDates.length-1];
-        if(daysBetween(s, e) > MAX_REASONABLE_DAYS) e = addDays(s, 30);
-        if(daysBetween(s, e) < 6) e = addDays(s, 6); // 至少 7 天，避免軸太短
-        const range = buildDateRange(s, e);
-        // 重建 cells，但盡量保留原本掛標籤那幾天的 cell id
-        const dateToOldId = {};
-        p.cells.forEach(c => { if(c && c.date && usedCellIds.has(c.id)) dateToOldId[c.date] = c.id; });
-        p.cells = range.map(dt => ({ id: dateToOldId[dt] || uid(), date: dt }));
-        p.start = s; p.end = e;
+        start = usedDates[0];
+        end = usedDates[usedDates.length-1];
+        if(daysBetween(start, end) > MAX_REASONABLE_DAYS) end = addDays(start, 30);
       } else {
-        const s = todayStr(), e = addDays(s, 6);
-        p.cells = buildDateRange(s, e).map(dt => ({ id: uid(), date: dt }));
-        p.start = s; p.end = e;
-        // 標籤全部退回未排入（因為 cell 重建了）
-        p.tags.forEach(t => { t.cellId = null; });
+        end = addDays(start, 6);
       }
-    } else {
-      // 正常資料：套用去重結果
-      p.cells = cellDates.map(dt => byDate[dt]);
     }
+    if(daysBetween(start, end) < 0) end = start;
 
-    // 補 start/end
-    if(!p.start || !p.end || p.start > p.end){
-      const ds = p.cells.map(c => c.date).sort();
-      p.start = ds[0] || todayStr();
-      p.end = ds[ds.length-1] || p.start;
-    }
+    p.start = start; p.end = end;
 
-    // 確保 cells 涵蓋 start~end 的每一天（補齊缺漏，保留既有 cell 的 id 與 gapAfter）
-    if(daysBetween(p.start, p.end) >= 0 && daysBetween(p.start, p.end) <= MAX_REASONABLE_DAYS){
-      const existingByDate = {};
-      p.cells.forEach(c => { if(c && c.date) existingByDate[c.date] = c; });
-      const fullRange = buildDateRange(p.start, p.end);
-      p.cells = fullRange.map(dt => existingByDate[dt] || { id: uid(), date: dt, gapAfter: 0 });
-    }
+    // 以 start~end 為權威，重建 cells：每一天一個，沿用既有 cell 的 id/gapAfter
+    const fullRange = buildDateRange(start, end);
+    p.cells = fullRange.map(dt => {
+      const old = byDate[dt];
+      if(old) return { id: old.id || uid(), date: dt, gapAfter: (old.gapAfter || 0) };
+      return { id: uid(), date: dt, gapAfter: 0 };
+    });
 
-    // cell 補 gapAfter 預設
-    p.cells.forEach(c => { if(c.gapAfter === undefined) c.gapAfter = 0; });
-
+    // 標籤欄位補齊；cellId 若指向已不存在的 cell 則退回未排入
+    const validCellIds = new Set(p.cells.map(c => c.id));
     p.tags.forEach(t => {
       if(t.note === undefined) t.note = "";
       if(!t.status) t.status = "feature";
       if(!t.side) t.side = "top";
       if(t.len === undefined) t.len = BASE_LEAD;
       if(t.placed === undefined){
-        if(t.cellId){
+        if(t.cellId && validCellIds.has(t.cellId)){
           const idx = p.cells.findIndex(c => c.id === t.cellId);
           t.placed = true;
-          t.x = idx >= 0 ? (LEFT_PAD + idx * MIN_GAP) : LEFT_PAD;
+          t.x = idx >= 0 ? (LEFT_PAD + idx * MIN_GAP + GRID) : LEFT_PAD;
         } else {
           t.placed = false;
           t.x = 0;
@@ -1404,6 +1385,23 @@ document.getElementById("zoomOut").onclick = () => setZoom(zoom - 0.15);
 document.getElementById("zoomFit").onclick = zoomToFit;
 
 window.addEventListener("resize", () => { if(detailView.classList.contains("active")) renderDetail(); });
+
+/* ===================== 緊急重置（Console 用）=====================
+   若資料損壞，在 Console 輸入 devtimelineReset() 可清空本機與雲端，回到乾淨的預設 5 專案 */
+window.devtimelineReset = function(){
+  if(!confirm("確定要清空所有資料（本機＋雲端），回到預設 5 個空專案嗎？此動作無法復原。")) return;
+  state = JSON.parse(JSON.stringify(DEFAULT_DATA));
+  state.updatedAt = Date.now();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  if(cloudReady && db){
+    db.collection("devtimeline").doc(SYNC_DOC_ID).set(state)
+      .then(() => { alert("已重置完成"); location.reload(); })
+      .catch(() => { alert("本機已重置，但雲端寫入失敗，請檢查網路後重試"); location.reload(); });
+  } else {
+    alert("已重置本機資料");
+    location.reload();
+  }
+};
 
 /* ===================== 啟動 ===================== */
 renderGrid();
