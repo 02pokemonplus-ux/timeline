@@ -475,9 +475,26 @@ const TAG_H_EST = 2 * GRID;
 function snap(v){ return Math.round(v / GRID) * GRID; }
 
 function uid(){ return Math.random().toString(36).slice(2,10); }
-function todayStr(){ return new Date().toISOString().slice(0,10); }
-function addDays(dateStr, n){ const d = new Date(dateStr+"T00:00:00"); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
-function daysBetween(a, b){ return Math.round((new Date(b+"T00:00:00") - new Date(a+"T00:00:00")) / 86400000); }
+// 用本地時間格式化 YYYY-MM-DD，避免 toISOString() 的 UTC 時區偏移
+function fmtYMD(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+function todayStr(){ return fmtYMD(new Date()); }
+function addDays(dateStr, n){
+  const parts = dateStr.split("-").map(Number);
+  const d = new Date(parts[0], parts[1]-1, parts[2]); // 本地時間建構，無時區偏移
+  d.setDate(d.getDate()+n);
+  return fmtYMD(d);
+}
+function daysBetween(a, b){
+  const pa = a.split("-").map(Number), pb = b.split("-").map(Number);
+  const da = new Date(pa[0], pa[1]-1, pa[2]);
+  const db = new Date(pb[0], pb[1]-1, pb[2]);
+  return Math.round((db - da) / 86400000);
+}
 function buildDateRange(start, end){
   const out = []; let d = start;
   while(d <= end){ out.push(d); d = addDays(d, 1); if(out.length > 400) break; }
