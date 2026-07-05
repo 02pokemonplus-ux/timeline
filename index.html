@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="DevTimeline — 個人開發專案時間軸管理工具，追蹤每個工具的進度脈絡">
+<meta name="theme-color" content="#b8860b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%231a1a1a'/%3E%3Cline x1='10' y1='38' x2='48' y2='38' stroke='%23b8860b' stroke-width='4' stroke-linecap='round'/%3E%3Cpolyline points='44,30 54,38 44,46' fill='none' stroke='%23b8860b' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='22' cy='38' r='4' fill='%23b8860b'/%3E%3Cline x1='22' y1='34' x2='22' y2='20' stroke='%23f0ede8' stroke-width='2.5'/%3E%3Crect x='13' y='10' width='18' height='10' rx='3' fill='%23f0ede8'/%3E%3C/svg%3E">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>DevTimeline — 專案時間軸</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -278,6 +282,7 @@
   }
   .detail.editing .node-tag .nt-del { display: flex; }
   .detail.editing .node-tag { cursor: default; }
+  .detail.editing .node-tag, .tag { touch-action: none; } /* 手機拖曳時不觸發頁面捲動 */
 
   /* 未排入標籤（pool 裡的樣式） */
   .tag {
@@ -338,6 +343,47 @@
   ::-webkit-scrollbar-track { background: transparent; }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 5px; }
 
+  /* ---------- Toast 提示 ---------- */
+  .toast-wrap {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
+    z-index: 300; display: flex; flex-direction: column; gap: 8px; align-items: center;
+    pointer-events: none;
+  }
+  .toast {
+    background: var(--surface); color: var(--text);
+    border: 1px solid var(--border); border-left: 4px solid var(--gold);
+    border-radius: 12px; padding: 11px 18px;
+    font-size: 13.5px; font-weight: 500;
+    box-shadow: 0 6px 24px rgba(0,0,0,0.18);
+    opacity: 0; transform: translateY(8px);
+    transition: opacity .2s, transform .2s;
+    max-width: 86vw;
+  }
+  .toast.show { opacity: 1; transform: translateY(0); }
+  .toast.error { border-left-color: var(--danger); }
+
+  /* ---------- 自製確認框 ---------- */
+  .confirm-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    display: none; align-items: center; justify-content: center;
+    z-index: 250; padding: 20px; backdrop-filter: blur(2px);
+  }
+  .confirm-overlay.open { display: flex; }
+  .confirm-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 24px 24px 20px; width: 100%; max-width: 340px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+  }
+  .confirm-box .cf-msg { font-size: 14.5px; line-height: 1.6; margin-bottom: 20px; white-space: pre-line; }
+  .confirm-box .cf-btns { display: flex; gap: 10px; }
+  .confirm-box button {
+    font-family: 'Noto Sans TC', sans-serif; flex: 1; border: none;
+    border-radius: 10px; padding: 10px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  .confirm-box .cf-cancel { background: var(--bg); color: var(--text2); border: 1px solid var(--border); }
+  .confirm-box .cf-ok { background: var(--danger); color: #fff; }
+  .confirm-box .cf-ok:hover { filter: brightness(1.08); }
+
   @media (max-width: 640px) {
     .detail-title { max-width: 150px; font-size: 15px; }
     .float-head { max-width: calc(100vw - 150px); }
@@ -368,6 +414,7 @@
         </button>
         <button class="tool-btn" id="exportBtn" title="匯出備份"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9m0 0l-4 4m4-4l4 4M4 6V4a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/></svg></button>
         <button class="tool-btn" id="importBtn" title="匯入備份"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 18v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg></button>
+        <button class="tool-btn" id="pasteBtn" title="貼上 JSON 匯入專案"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 13l2 2 4-4"/></svg></button>
         <input type="file" id="importFile" accept="application/json" style="display:none">
       </div>
     </div>
@@ -460,7 +507,57 @@
   </div>
 </div>
 
+<!-- Paste import modal -->
+<div class="modal-overlay" id="pasteModal">
+  <div class="modal">
+    <div class="modal-head"><h3>貼上 JSON 匯入專案</h3><button class="modal-close" id="pasteClose">×</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <label>把 AI 輸出的 JSON 貼在這裡</label>
+        <textarea id="pasteArea" placeholder='{"format":"devtimeline-project-v1", ...}' style="min-height:180px;font-family:monospace;font-size:12px;"></textarea>
+      </div>
+      <div class="hint-text">支援 devtimeline-project-v1 格式，會新增為一個專案、不影響現有資料。若 AI 輸出包了 ```json 圍欄也沒關係，會自動清除。</div>
+    </div>
+    <div class="modal-foot"><button class="save" id="pasteConfirm">匯入</button></div>
+  </div>
+</div>
+
+<!-- Toast 提示容器 -->
+<div class="toast-wrap" id="toastWrap"></div>
+
+<!-- 自製確認框 -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-box">
+    <div class="cf-msg" id="confirmMsg"></div>
+    <div class="cf-btns">
+      <button class="cf-cancel" id="confirmCancel">取消</button>
+      <button class="cf-ok" id="confirmOk">確定</button>
+    </div>
+  </div>
+</div>
+
 <script>
+/* ===================== UI 提示（取代原生 alert/confirm）===================== */
+function showToast(msg, kind){
+  const wrap = document.getElementById("toastWrap");
+  const t = document.createElement("div");
+  t.className = "toast" + (kind === "error" ? " error" : "");
+  t.textContent = msg;
+  wrap.appendChild(t);
+  requestAnimationFrame(() => t.classList.add("show"));
+  setTimeout(() => {
+    t.classList.remove("show");
+    setTimeout(() => t.remove(), 250);
+  }, 2600);
+}
+
+let confirmCallback = null;
+function showConfirm(msg, onOk){
+  document.getElementById("confirmMsg").textContent = msg;
+  confirmCallback = onOk;
+  document.getElementById("confirmOverlay").classList.add("open");
+}
+
 /* ===================== 資料層 ===================== */
 const STORAGE_KEY = "devtimeline_v4";
 
@@ -794,10 +891,11 @@ function renderGrid(){
     removeBtn.innerHTML = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0-1 14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L4 6"/></svg>刪除`;
     removeBtn.onclick = (e) => {
       e.stopPropagation();
-      if(confirm(`確定要刪除「${project.title}」嗎？此動作無法復原。`)){
+      showConfirm(`確定要刪除「${project.title}」嗎？此動作無法復原。`, () => {
         state.projects = state.projects.filter(p => p.id !== project.id);
         saveData(); renderGrid();
-      }
+        showToast("已刪除專案");
+      });
     };
     editRow.appendChild(completeBtn); editRow.appendChild(removeBtn);
     card.appendChild(editRow);
@@ -831,8 +929,8 @@ document.getElementById("projCreate").onclick = () => {
   const name = document.getElementById("projName").value.trim() || "未命名專案";
   const s = document.getElementById("projStart").value;
   const e = document.getElementById("projEnd").value;
-  if(!s || !e){ alert("請選擇開始與結束日期"); return; }
-  if(e < s){ alert("結束日期不能早於開始日期"); return; }
+  if(!s || !e){ showToast("請選擇開始與結束日期", "error"); return; }
+  if(e < s){ showToast("結束日期不能早於開始日期", "error"); return; }
   const p = mkProjectWithRange(name, s, e);
   state.projects.push(p); saveData();
   projModal.classList.remove("open");
@@ -1037,6 +1135,14 @@ function renderNodeTag(project, tag, x, y, side){
 }
 
 /* ===== 日期點拖曳（編輯模式，調整與前一天的間距）===== */
+// rAF 節流：同一幀內多次呼叫只重繪一次
+let renderQueued = false;
+function scheduleRender(){
+  if(renderQueued) return;
+  renderQueued = true;
+  requestAnimationFrame(() => { renderQueued = false; renderDetail(); });
+}
+
 function makeDateDraggable(node, project, prevCell, cell, layout, cellIdx){
   node.addEventListener("pointerdown", (e) => {
     if(!editing) return;
@@ -1049,10 +1155,12 @@ function makeDateDraggable(node, project, prevCell, cell, layout, cellIdx){
       const prevX = L.positions[prevCell.id] ? L.positions[prevCell.id].x : LEFT_PAD;
       let newExtra = snap(p.x - prevX - MIN_GAP);
       if(newExtra < 0) newExtra = 0;
-      if(newExtra > 40 * GRID) newExtra = 40 * GRID; // 上限避免拖太誇張
-      prevCell.gapAfter = newExtra;
-      moved = true;
-      renderDetail();
+      if(newExtra > 40 * GRID) newExtra = 40 * GRID;
+      if(newExtra !== (prevCell.gapAfter || 0)){ // 值有變才排程重繪
+        prevCell.gapAfter = newExtra;
+        moved = true;
+        scheduleRender();
+      }
     }
     function up(ev){
       document.removeEventListener("pointermove", move);
@@ -1255,7 +1363,7 @@ extendModal.addEventListener("click", e => { if(e.target === extendModal) extend
 document.getElementById("extendConfirm").onclick = () => {
   if(!extendCtx) return;
   const n = parseInt(document.getElementById("extendDays").value, 10);
-  if(isNaN(n) || n < 1){ alert("請輸入正整數天數"); return; }
+  if(isNaN(n) || n < 1){ showToast("請輸入正整數天數", "error"); return; }
   const existing = new Set(extendCtx.cells.map(c => c.date));
   for(let i=1;i<=n;i++){ const d = addDays(extendCtx.end, i); if(!existing.has(d)) extendCtx.cells.push({ id: uid(), date: d }); }
   extendCtx.end = addDays(extendCtx.end, n);
@@ -1284,17 +1392,18 @@ document.addEventListener("keydown", (e) => { if(e.key === "Escape" && modal.cla
 document.getElementById("modalSave").onclick = () => {
   if(!modalCtx) return;
   const t = modalCtx.tag; const nt = modalTitle.value.trim();
-  if(!nt){ alert("標籤標題不能為空"); return; }
+  if(!nt){ showToast("標籤標題不能為空", "error"); return; }
   t.text = nt; t.status = modalStatus.value; t.note = modalNote.value;
   saveData(); closeTagModal(); renderDetail();
 };
 document.getElementById("modalDelete").onclick = () => {
   if(!modalCtx) return;
-  if(confirm("確定要刪除這個標籤嗎？")){
+  showConfirm("確定要刪除這個標籤嗎？", () => {
     const {project, tag} = modalCtx;
     project.tags = project.tags.filter(x => x.id !== tag.id);
     saveData(); closeTagModal(); renderDetail();
-  }
+    showToast("已刪除標籤");
+  });
 };
 
 /* ===================== 標題編輯 / 返回 / 編輯模式 ===================== */
@@ -1368,15 +1477,54 @@ document.getElementById("importFile").addEventListener("change", (e) => {
         const proj = convertImportedProject(parsed);
         state.projects.push(proj);
         saveData(); goHome();
-        alert(`已匯入專案「${proj.title}」（${proj.tags.length} 個事件）`);
+        showToast(`已匯入專案「${proj.title}」（${proj.tags.length} 個事件）`);
       } else if(parsed && Array.isArray(parsed.projects)){
         // 完整備份：覆蓋
-        if(confirm("匯入完整備份將覆蓋目前所有資料，確定？")){ state = migrate(parsed); saveData(); goHome(); }
+        showConfirm("匯入完整備份將覆蓋目前所有資料，確定？", () => {
+          state = migrate(parsed); saveData(); goHome();
+          showToast("已還原備份");
+        });
       } else throw new Error("bad");
-    }catch(err){ alert("匯入失敗：檔案格式不正確"); }
+    }catch(err){ showToast("匯入失敗：檔案格式不正確", "error"); }
   };
   reader.readAsText(file); e.target.value = "";
 });
+
+/* ===================== 貼上 JSON 匯入 ===================== */
+const pasteModal = document.getElementById("pasteModal");
+document.getElementById("pasteBtn").onclick = () => {
+  document.getElementById("pasteArea").value = "";
+  pasteModal.classList.add("open");
+  setTimeout(() => document.getElementById("pasteArea").focus(), 50);
+};
+document.getElementById("pasteClose").onclick = () => pasteModal.classList.remove("open");
+pasteModal.addEventListener("click", e => { if(e.target === pasteModal) pasteModal.classList.remove("open"); });
+document.getElementById("pasteConfirm").onclick = () => {
+  let txt = document.getElementById("pasteArea").value.trim();
+  if(!txt){ showToast("請先貼上 JSON 內容", "error"); return; }
+  // 自動清除 markdown 圍欄與前後雜訊
+  txt = txt.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+  // 若前後有多餘文字，嘗試擷取第一個 { 到最後一個 }
+  const first = txt.indexOf("{"), last = txt.lastIndexOf("}");
+  if(first > 0 || (last >= 0 && last < txt.length - 1)){
+    if(first >= 0 && last > first) txt = txt.slice(first, last + 1);
+  }
+  try{
+    const parsed = JSON.parse(txt);
+    if(parsed && parsed.format === "devtimeline-project-v1" && parsed.title && parsed.start && parsed.end){
+      const proj = convertImportedProject(parsed);
+      state.projects.push(proj);
+      saveData();
+      pasteModal.classList.remove("open");
+      goHome();
+      showToast(`已匯入專案「${proj.title}」（${proj.tags.length} 個事件）`);
+    } else {
+      showToast("匯入失敗：不是有效的 devtimeline-project-v1 格式", "error");
+    }
+  }catch(err){
+    showToast("匯入失敗：JSON 格式不正確，請確認完整複製了 AI 的輸出", "error");
+  }
+};
 
 /* ===================== 主題 ===================== */
 function applyThemeIcons(dark){
@@ -1406,19 +1554,36 @@ window.addEventListener("resize", () => { if(detailView.classList.contains("acti
 /* ===================== 緊急重置（Console 用）=====================
    若資料損壞，在 Console 輸入 devtimelineReset() 可清空本機與雲端，回到乾淨的預設 5 專案 */
 window.devtimelineReset = function(){
-  if(!confirm("確定要清空所有資料（本機＋雲端），回到預設 5 個空專案嗎？此動作無法復原。")) return;
-  state = JSON.parse(JSON.stringify(DEFAULT_DATA));
-  state.updatedAt = Date.now();
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  if(cloudReady && db){
-    db.collection("devtimeline").doc(SYNC_DOC_ID).set(state)
-      .then(() => { alert("已重置完成"); location.reload(); })
-      .catch(() => { alert("本機已重置，但雲端寫入失敗，請檢查網路後重試"); location.reload(); });
-  } else {
-    alert("已重置本機資料");
-    location.reload();
-  }
+  showConfirm("確定要清空所有資料（本機＋雲端），回到預設 5 個空專案嗎？此動作無法復原。", () => {
+    state = JSON.parse(JSON.stringify(DEFAULT_DATA));
+    state.updatedAt = Date.now();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if(cloudReady && db){
+      db.collection("devtimeline").doc(SYNC_DOC_ID).set(state)
+        .then(() => { showToast("已重置完成"); setTimeout(() => location.reload(), 900); })
+        .catch(() => { showToast("本機已重置，但雲端寫入失敗", "error"); setTimeout(() => location.reload(), 1400); });
+    } else {
+      showToast("已重置本機資料");
+      setTimeout(() => location.reload(), 900);
+    }
+  });
 };
+
+/* ===================== 確認框事件 ===================== */
+document.getElementById("confirmOk").onclick = () => {
+  document.getElementById("confirmOverlay").classList.remove("open");
+  if(confirmCallback){ const cb = confirmCallback; confirmCallback = null; cb(); }
+};
+document.getElementById("confirmCancel").onclick = () => {
+  document.getElementById("confirmOverlay").classList.remove("open");
+  confirmCallback = null;
+};
+document.getElementById("confirmOverlay").addEventListener("click", (e) => {
+  if(e.target === document.getElementById("confirmOverlay")){
+    document.getElementById("confirmOverlay").classList.remove("open");
+    confirmCallback = null;
+  }
+});
 
 /* ===================== 啟動 ===================== */
 renderGrid();
