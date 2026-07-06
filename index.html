@@ -415,6 +415,7 @@
         <button class="tool-btn" id="exportBtn" title="匯出備份"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21V9m0 0l-4 4m4-4l4 4M4 6V4a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2"/></svg></button>
         <button class="tool-btn" id="importBtn" title="匯入備份"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 18v2a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-2"/></svg></button>
         <button class="tool-btn" id="pasteBtn" title="貼上 JSON 匯入專案"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><path d="M9 13l2 2 4-4"/></svg></button>
+        <button class="tool-btn" id="copyPromptBtn" title="複製 AI 匯入提示詞"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button>
         <input type="file" id="importFile" accept="application/json" style="display:none">
       </div>
     </div>
@@ -1523,6 +1524,76 @@ document.getElementById("pasteConfirm").onclick = () => {
     }
   }catch(err){
     showToast("匯入失敗：JSON 格式不正確，請確認完整複製了 AI 的輸出", "error");
+  }
+};
+
+/* ===================== 複製 AI 匯入提示詞 ===================== */
+const IMPORT_PROMPT = `Based on our conversation above, generate an import file for my project-timeline tool "DevTimeline". Summarize the project we discussed into ONE project object following the schema below EXACTLY.
+
+## Output rules (strict)
+1. Output ONLY raw JSON. No markdown code fences, no commentary, no leading/trailing text.
+2. The JSON must be syntactically valid and parseable by JSON.parse.
+3. All dates must be real calendar dates in "YYYY-MM-DD" format.
+4. All human-readable text values ("title" of project, "title" and "note" of events) must be written in Traditional Chinese (zh-TW, 台灣用語). Never use Simplified Chinese.
+5. Do not invent fields not listed in the schema. Do not omit required fields.
+
+## Schema
+{
+  "format": "devtimeline-project-v1",
+  "title": string,               // project name, concise, <= 30 characters
+  "start": "YYYY-MM-DD",         // first day of the timeline
+  "end": "YYYY-MM-DD",           // last day; must be >= start; total span <= 60 days
+  "done": false,
+  "events": [                    // 3 to 20 items, sorted chronologically by date
+    {
+      "date": "YYYY-MM-DD",      // must be within [start, end]
+      "title": string,           // <= 12 characters; shown on the timeline tag
+      "status": "idea" | "progress" | "feature" | "post" | "done",
+      "note": string             // detailed context; "" if none
+    }
+  ]
+}
+
+## Status meanings
+- "idea": 構思中 (concept / planning / design decisions)
+- "progress": 製作流程 (implementation work in progress)
+- "feature": 新增功能 (a feature was added or specified)
+- "post": 社群貼文 (social media post / public announcement)
+- "done": 已完成 (a milestone or the task was completed)
+
+## Content guidelines
+- Derive events from the ACTUAL conversation: key decisions, requirement changes, features added, bugs found and fixed, milestones reached.
+- Keep each event "title" short (<= 12 chars); put the full detail in "note": what was decided, why, alternatives rejected, and any follow-up items. Multi-line notes are allowed using \\n.
+- If the conversation contains explicit dates, use them. Otherwise, use today as "start" and distribute events plausibly; keep the total span compact (7-14 days typical).
+- If multiple things happened in one discussion, it is fine to place several events on the same date.
+- Do NOT pad with filler events. Quality over quantity.
+
+## Self-check before you answer (do all of these silently)
+- Output is raw JSON only, no \`\`\` fences
+- "format" equals "devtimeline-project-v1"
+- start <= end, span <= 60 days
+- every event date is within [start, end] and is a real date
+- every status is one of the five allowed values
+- all text is Traditional Chinese
+- JSON.parse would succeed on your entire output`;
+
+document.getElementById("copyPromptBtn").onclick = () => {
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(IMPORT_PROMPT)
+      .then(() => showToast("提示詞已複製，貼到 AI 對話結尾即可"))
+      .catch(() => fallbackCopy());
+  } else {
+    fallbackCopy();
+  }
+  function fallbackCopy(){
+    const ta = document.createElement("textarea");
+    ta.value = IMPORT_PROMPT;
+    ta.style.cssText = "position:fixed;left:-9999px;";
+    document.body.appendChild(ta);
+    ta.select();
+    try{ document.execCommand("copy"); showToast("提示詞已複製，貼到 AI 對話結尾即可"); }
+    catch(e){ showToast("複製失敗，請手動複製", "error"); }
+    document.body.removeChild(ta);
   }
 };
 
